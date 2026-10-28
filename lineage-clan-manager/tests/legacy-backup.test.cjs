@@ -65,6 +65,10 @@ test("legacy conversion preserves every identity and archives the complete origi
     backup.data.members.map((member) => member.name),
     source.data.members.map((member) => member.nickname),
   );
+  assert.deepEqual(
+    backup.data.members.map((member) => member.manualRank),
+    source.data.members.map((member) => member.rank || null),
+  );
   assert.deepEqual(backup.data.legacyImport.sourceBackup, original);
   assert.deepEqual(source, original);
   assert.notStrictEqual(backup.data.legacyImport.sourceBackup, source);
@@ -166,12 +170,30 @@ test("known values and joined text are preserved without manufacturing per-membe
   const member = backup.data.members[0];
   assert.equal(member.level, 200);
   assert.equal(member.experience, 72.35);
+  assert.equal(member.manualRank, 9);
   assert.match(member.note, /원본 가입일: 2024-05-06/);
   assert.match(member.note, /원본 순위: 9/);
   assert.equal(Object.hasOwn(member, "createdAt"), false);
   assert.equal(Object.hasOwn(member, "updatedAt"), false);
   assert.equal(report.missingLevels, 0);
   assert.equal(report.missingExperience, 0);
+});
+
+test("legacy rank null, zero and missing remain unranked while bounded numeric ranks are retained", () => {
+  const source = legacyFixture(5);
+  source.data.members[0].rank = null;
+  source.data.members[1].rank = 0;
+  delete source.data.members[2].rank;
+  source.data.members[3].rank = 1;
+  source.data.members[4].rank = 5000;
+  const before = structuredClone(source);
+  const { backup } = convertBackup(source);
+  assert.deepEqual(
+    backup.data.members.map(({ manualRank }) => manualRank),
+    [null, null, null, 1, 5000],
+  );
+  assert.deepEqual(backup.data.legacyImport.sourceBackup, before);
+  assert.deepEqual(source, before);
 });
 
 test("converted backup passes the real validator, disk writer, import and reopen", async (t) => {
@@ -216,6 +238,31 @@ test("native and already-converted inputs pass unchanged without another archive
   assert.equal(convertBackup(empty).report.kind, "native");
 });
 
+test("already converted native backups recover only missing manual ranks from the original archive", () => {
+  const source = legacyFixture(4);
+  source.data.members[0].rank = 3;
+  source.data.members[1].rank = 7;
+  source.data.members[2].rank = 9;
+  source.data.members[3].rank = 0;
+  const { backup } = convertBackup(source);
+  delete backup.data.members[0].manualRank;
+  backup.data.members[0].rank = 999; // Previous derived rank must not override the source.
+  backup.data.members[1].manualRank = null; // A user explicitly cleared this rank.
+  backup.data.members[2].manualRank = 12;
+  delete backup.data.members[3].manualRank;
+  const before = structuredClone(backup);
+  const result = convertBackup(backup);
+  assert.equal(result.report.kind, "native");
+  assert.equal(result.report.manualRanks, 1);
+  assert.deepEqual(
+    result.backup.data.members.map(({ manualRank }) => manualRank),
+    [3, null, 12, null],
+  );
+  assert.deepEqual(result.backup.data.legacyImport, before.data.legacyImport);
+  assert.deepEqual(backup, before);
+  assert.deepEqual(convertBackup(result.backup).backup, result.backup);
+});
+
 test("malformed, duplicate and out-of-range records are rejected without dropping or changing source data", () => {
   const changes = [
     (source) => {
@@ -256,6 +303,15 @@ test("malformed, duplicate and out-of-range records are rejected without droppin
     },
     (source) => {
       source.data.members[0].rank = -1;
+    },
+    (source) => {
+      source.data.members[0].rank = 5001;
+    },
+    (source) => {
+      source.data.members[0].rank = 1.5;
+    },
+    (source) => {
+      source.data.members[0].rank = "1";
     },
     (source) => {
       source.data.members[0].active = "false";

@@ -1,5 +1,7 @@
 "use strict";
 
+const { rankMembers, normalizeManualRank } = require("./manual-ranking.cjs");
+
 const ENTRY_SIZE = 15;
 const ENTRY_CLASSES = Object.freeze([
   "군주",
@@ -64,11 +66,13 @@ function validateEntryMember(member) {
   if (!Number.isInteger(member.level) || member.level < 1 || member.level > 200)
     reject("엔트리 레벨은 1~200 사이의 정수여야 합니다.");
   if (
-    !Number.isFinite(member.experience) ||
-    member.experience < 0 ||
-    member.experience > 100
+    Object.hasOwn(member, "experience") &&
+    (!Number.isFinite(member.experience) ||
+      member.experience < 0 ||
+      member.experience > 100)
   )
     reject("엔트리 경험치는 0~100% 사이의 숫자여야 합니다.");
+  normalizeManualRank(member.manualRank);
 }
 
 function comparableName(name) {
@@ -128,24 +132,7 @@ function rankedMembers(members) {
     if (ids.has(member.id)) reject("엔트리 혈맹원 ID가 중복되었습니다.");
     ids.add(member.id);
   }
-  const sorted = [...members].sort(
-    (a, b) =>
-      b.level - a.level ||
-      b.experience - a.experience ||
-      a.name.localeCompare(b.name, "ko") ||
-      a.id.localeCompare(b.id),
-  );
-  let rank = 0;
-  return sorted.map((member, index) => {
-    const previous = sorted[index - 1];
-    if (
-      !previous ||
-      previous.level !== member.level ||
-      previous.experience !== member.experience
-    )
-      rank = index + 1;
-    return { ...member, rank };
-  });
+  return rankMembers(members);
 }
 
 function selectEntry(members, settings) {
@@ -201,7 +188,7 @@ function formatEntryText(members) {
     ids.add(member.id);
     const name = member.name.replace(/[\r\n\t]+/g, " ");
     const className = member.class.replace(/[\r\n\t]+/g, " ");
-    return `${index + 1}. ${name} / ${className} / 레벨 ${member.level} / 경험치 ${member.experience}%`;
+    return `${index + 1}. ${name} / ${className} / 레벨 ${member.level}`;
   });
   return ["[던전 최종 엔트리 15명]", ...lines].join("\n");
 }

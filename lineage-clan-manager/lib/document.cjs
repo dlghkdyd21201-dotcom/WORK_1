@@ -5,6 +5,7 @@ const {
   validateEntrySettings,
   validateEntryMember,
 } = require("./entry.cjs");
+const { normalizeManualRank } = require("./manual-ranking.cjs");
 
 function reject(message) {
   throw new Error(message);
@@ -85,7 +86,10 @@ function finalEntry(value) {
   const counts = new Map();
   for (const member of value.members) {
     validateEntryMember(member);
-    if (!Number.isInteger(member.rank) || member.rank < 1 || member.rank > 5000)
+    if (
+      member.rank !== null &&
+      (!Number.isInteger(member.rank) || member.rank < 1 || member.rank > 5000)
+    )
       reject("확정 엔트리 순위는 1~5,000 사이의 정수여야 합니다.");
     if (ids.has(member.id)) reject("확정 엔트리 혈맹원 ID가 중복되었습니다.");
     if (absentIds.has(member.id))
@@ -122,11 +126,13 @@ function validateDocument(data) {
     )
       reject("혈맹원 레벨은 1~200 사이의 정수여야 합니다.");
     if (
-      !Number.isFinite(member.experience) ||
-      member.experience < 0 ||
-      member.experience > 100
+      Object.hasOwn(member, "experience") &&
+      (!Number.isFinite(member.experience) ||
+        member.experience < 0 ||
+        member.experience > 100)
     )
       reject("혈맹원 경험치는 0~100% 사이의 숫자여야 합니다.");
+    normalizeManualRank(member.manualRank);
     if (memberIds.has(member.id)) reject("혈맹원 ID가 중복되었습니다.");
     memberIds.add(member.id);
     const name = member.name.normalize("NFC").trim().toLocaleLowerCase("ko");

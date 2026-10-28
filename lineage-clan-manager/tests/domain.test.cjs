@@ -69,7 +69,7 @@ test("member names reject normalized or case-insensitive duplicates", async () =
   }
 });
 
-test("member form rejects invalid levels, experience and blank identity fields", async () => {
+test("member form rejects invalid levels, present legacy XP, manual ranks and blank identity fields", async () => {
   const { validateMember } = await domain;
   for (const overrides of [
     { id: "" },
@@ -83,6 +83,13 @@ test("member form rejects invalid levels, experience and blank identity fields",
     { experience: 100.1 },
     { experience: NaN },
     { experience: Infinity },
+    { manualRank: 0 },
+    { manualRank: -1 },
+    { manualRank: 5001 },
+    { manualRank: 1.5 },
+    { manualRank: "1" },
+    { manualRank: NaN },
+    { manualRank: Infinity },
   ])
     assert.throws(() => validateMember(member(overrides)));
   assert.equal(
@@ -93,26 +100,55 @@ test("member form rejects invalid levels, experience and blank identity fields",
     validateMember(member({ level: 200, experience: 100 })).level,
     200,
   );
+  const unknownExperience = member({ manualRank: null });
+  delete unknownExperience.experience;
+  assert.equal(validateMember(unknownExperience).manualRank, null);
+  assert.equal(validateMember(member({ manualRank: 1 })).manualRank, 1);
+  assert.equal(validateMember(member({ manualRank: 5000 })).manualRank, 5000);
 });
 
-test("level ranking uses descending level then experience and competition ranks for ties", async () => {
+test("domain ranking uses assigned ranks and keeps unranked members after ranked members", async () => {
   const { rankMembers } = await domain;
   const entries = [
-    member({ id: "low", name: "하위", level: 79, experience: 100 }),
-    member({ id: "tie-z", name: "하늘", experience: 70 }),
-    member({ id: "second", name: "중간", experience: 60 }),
-    member({ id: "tie-a", name: "가람", experience: 70 }),
-    member({ id: "first", name: "최상위", level: 81, experience: 0 }),
+    member({ id: "unranked-low", name: "하위", level: 79, experience: 100 }),
+    member({
+      id: "tie-z",
+      name: "하늘",
+      level: 200,
+      experience: 100,
+      manualRank: 7,
+    }),
+    member({
+      id: "unranked-high",
+      name: "중간",
+      level: 200,
+      experience: 100,
+      manualRank: null,
+    }),
+    member({
+      id: "tie-a",
+      name: "가람",
+      level: 1,
+      experience: 0,
+      manualRank: 7,
+    }),
+    member({
+      id: "first",
+      name: "최상위",
+      level: 1,
+      experience: 0,
+      manualRank: 2,
+    }),
   ];
   const original = structuredClone(entries);
   const ranked = rankMembers(entries);
   assert.deepEqual(
     ranked.map((entry) => entry.id),
-    ["first", "tie-a", "tie-z", "second", "low"],
+    ["first", "tie-a", "tie-z", "unranked-high", "unranked-low"],
   );
   assert.deepEqual(
     ranked.map((entry) => entry.rank),
-    [1, 2, 2, 4, 5],
+    [2, 7, 7, null, null],
   );
   assert.deepEqual(entries, original);
   assert.deepEqual(rankMembers([]), []);

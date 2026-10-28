@@ -8,6 +8,7 @@ const members = Array.from({ length: 24 }, (_, index) => ({
   class: CLASSES[index % CLASSES.length],
   level: 120 - index,
   experience: index / 10,
+  manualRank: null,
   role: "혈맹원",
   note: "",
   createdAt: "2026-10-28T00:00:00.000Z",
@@ -134,6 +135,8 @@ test("ranking selects the best fifteen, excludes absentees and copies only a cur
   expect(copied).not.toContain("검증01");
   expect(copied).toContain("기사");
   expect(copied).toContain(String(members[1].level));
+  expect(copied).not.toContain("경험치");
+  expect(copied).not.toContain("%");
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.screenshot({
     path: "/tmp/lineage-entry-final.png",

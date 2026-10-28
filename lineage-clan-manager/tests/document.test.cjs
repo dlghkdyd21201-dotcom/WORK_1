@@ -60,6 +60,11 @@ test("malformed domain records in native imports never replace existing usable d
     { members: [{ ...person, class: "" }] },
     { members: [{ ...person, level: 0 }] },
     { members: [{ ...person, experience: 101 }] },
+    { members: [{ ...person, manualRank: 0 }] },
+    { members: [{ ...person, manualRank: -1 }] },
+    { members: [{ ...person, manualRank: 5001 }] },
+    { members: [{ ...person, manualRank: 1.5 }] },
+    { members: [{ ...person, manualRank: "1" }] },
     { members: [{ ...person, createdAt: "bad timestamp" }] },
     {
       members: [{ ...person }, { ...person, id: "member-2", name: " 구성원 " }],
@@ -103,6 +108,24 @@ test("malformed domain records in native imports never replace existing usable d
     );
     assert.deepEqual(await store.load(), saved);
   }
+});
+
+test("version 1 accepts unknown XP and optional manual ranks without changing old records", async (t) => {
+  const { filePath, store } = await fixture(t);
+  const withoutExperience = { ...person, manualRank: 5000 };
+  delete withoutExperience.experience;
+  const input = {
+    members: [
+      withoutExperience,
+      { ...person, id: "member-2", name: "순위 미입력", manualRank: null },
+      { ...person, id: "member-3", name: "예전 혈맹원" },
+    ],
+  };
+  const before = structuredClone(input);
+  const saved = await store.save(input, 0);
+  assert.deepEqual(input, before);
+  assert.deepEqual(saved.data, before);
+  assert.deepEqual(await createStore({ filePath }).load(), saved);
 });
 
 test("deleting a roster member keeps the historic battle participants across save and reopen", async (t) => {

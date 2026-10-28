@@ -9,6 +9,7 @@ const {
   selectEntry,
   formatEntryText,
   validateEntrySettings,
+  validateEntryMember,
 } = require("../lib/entry.cjs");
 const { validateDocument } = require("../lib/document.cjs");
 const {
@@ -29,6 +30,7 @@ function member(index, overrides = {}) {
     class: classes[index % classes.length],
     level: 120 - index,
     experience: 25.5,
+    manualRank: index + 1,
     role: "혈맹원",
     note: "보존할 메모",
     createdAt: timestamp,
@@ -86,7 +88,7 @@ function deepFreeze(value) {
   return Object.freeze(value);
 }
 
-test("ranking selects exactly the top 15 in descending level and experience", () => {
+test("ranking selects exactly the first 15 manually ranked members", () => {
   const members = roster(24).reverse();
   const result = selectEntry(members, settings());
   assert.deepEqual(
@@ -108,26 +110,57 @@ test("ranking selects exactly the top 15 in descending level and experience", ()
   });
 });
 
-test("ties use Korean name then ID order and retain global competition ranks", async () => {
+test("duplicate manual ranks use Korean name then ID order and retain assigned ranks", async () => {
   const members = [
-    member(0, { id: "low", name: "하위", level: 79, experience: 100 }),
-    member(1, { id: "tie-z", name: "하늘", level: 80, experience: 70 }),
-    member(2, { id: "second", name: "중간", level: 80, experience: 60 }),
-    member(3, { id: "tie-a", name: "가람", level: 80, experience: 70 }),
-    member(4, { id: "first", name: "최상위", level: 81, experience: 0 }),
+    member(0, {
+      id: "low",
+      name: "하위",
+      level: 200,
+      experience: 100,
+      manualRank: 30,
+    }),
+    member(1, {
+      id: "tie-z",
+      name: "하늘",
+      level: 200,
+      experience: 100,
+      manualRank: 7,
+    }),
+    member(2, {
+      id: "second",
+      name: "중간",
+      level: 200,
+      experience: 100,
+      manualRank: 20,
+    }),
+    member(3, {
+      id: "tie-a",
+      name: "가람",
+      level: 1,
+      experience: 0,
+      manualRank: 7,
+    }),
+    member(4, {
+      id: "first",
+      name: "최상위",
+      level: 1,
+      experience: 0,
+      manualRank: 2,
+    }),
   ];
   const { rankMembers } = await import("../src/domain.js");
   const selected = selectEntry(members, settings()).members;
   assert.deepEqual(selected, rankMembers(members));
   assert.deepEqual(
     selected.map((entry) => entry.rank),
-    [1, 2, 2, 4, 5],
+    [2, 7, 7, 20, 30],
   );
   const idTies = [member(1), member(0)].map((entry) => ({
     ...entry,
     name: "같은 표시 이름",
     level: 80,
     experience: 50,
+    manualRank: 5,
   }));
   assert.deepEqual(
     selectEntry(idTies, settings()).members.map((entry) => entry.id),
@@ -137,6 +170,7 @@ test("ties use Korean name then ID order and retain global competition ranks", a
     ...entry,
     level: 80,
     experience: 50,
+    manualRank: 1,
   }));
   assert.equal(selectEntry(tiedBoundary, settings()).members.length, 15);
   assert.ok(
@@ -144,6 +178,74 @@ test("ties use Korean name then ID order and retain global competition ranks", a
       (entry) => entry.rank === 1,
     ),
   );
+});
+
+test("ranking prioritizes manual rank over level and XP and leaves unknown ranks unassigned", () => {
+  const members = [
+    member(0, {
+      id: "ranked",
+      name: "지정 순위",
+      level: 1,
+      experience: 0,
+      manualRank: 5000,
+    }),
+    member(1, {
+      id: "ranked-first",
+      name: "우선 순위",
+      level: 1,
+      experience: 0,
+      manualRank: 1,
+    }),
+    member(2, {
+      id: "unknown-name-z",
+      name: "하늘",
+      level: 200,
+      experience: 100,
+      manualRank: null,
+    }),
+    member(3, {
+      id: "unknown-name-a",
+      name: "가람",
+      level: 200,
+      experience: 0,
+      manualRank: null,
+    }),
+    member(4, {
+      id: "unknown-low",
+      name: "낮은 레벨",
+      level: 199,
+      experience: 100,
+      manualRank: null,
+    }),
+  ];
+  delete members[4].manualRank;
+  const selected = selectEntry(members, settings()).members;
+  assert.deepEqual(
+    selected.map(({ id }) => id),
+    [
+      "ranked-first",
+      "ranked",
+      "unknown-name-a",
+      "unknown-name-z",
+      "unknown-low",
+    ],
+  );
+  assert.deepEqual(
+    selected.map(({ rank }) => rank),
+    [1, 5000, null, null, null],
+  );
+});
+
+test("entry validation accepts absent XP and optional manual ranks while rejecting invalid present values", () => {
+  const withoutExperience = member(0, { manualRank: null });
+  delete withoutExperience.experience;
+  assert.doesNotThrow(() => validateEntryMember(withoutExperience));
+  delete withoutExperience.manualRank;
+  assert.doesNotThrow(() => validateEntryMember(withoutExperience));
+  for (const manualRank of [0, -1, 5001, 1.5, "1", "", true, NaN, Infinity])
+    assert.throws(() => validateEntryMember(member(0, { manualRank })));
+  for (const experience of [null, -1, 101, "0", NaN, Infinity])
+    assert.throws(() => validateEntryMember(member(0, { experience })));
 });
 
 test("ranking absences refill from the next eligible members without reranking or counting stale IDs", () => {
@@ -312,10 +414,11 @@ test("copy text contains a Korean header and exactly 15 numbered complete member
   for (const [index, entry] of selected.entries()) {
     assert.equal(
       lines[index + 1],
-      `${index + 1}. ${entry.name} / ${entry.class} / 레벨 ${entry.level} / 경험치 ${entry.experience}%`,
+      `${index + 1}. ${entry.name} / ${entry.class} / 레벨 ${entry.level}`,
     );
   }
   assert.deepEqual(selected, before);
+  assert.doesNotMatch(lines.join("\n"), /경험치|XP|%/i);
   for (const entries of [
     [],
     selected.slice(0, 14),
@@ -341,6 +444,42 @@ test("version 1 documents with no entry fields remain compatible and unchanged",
   assert.deepEqual(oldData, before);
   assert.ok(!Object.hasOwn(parsed.data, "entrySettings"));
   assert.ok(!Object.hasOwn(parsed.data, "finalEntry"));
+});
+
+test("old XP snapshots and new unranked snapshots both import and copy without XP", () => {
+  const legacyMembers = roster(15).map(({ manualRank, ...legacy }) => legacy);
+  const legacySnapshot = snapshot(legacyMembers);
+  // Previous releases saved positive calculated ranks without manualRank.
+  legacySnapshot.members.forEach((entry, index) => {
+    entry.rank = index + 1;
+  });
+  const oldData = { members: legacyMembers, finalEntry: legacySnapshot };
+  const before = structuredClone(oldData);
+  const parsedLegacy = parseBackup(JSON.stringify(envelope(oldData)));
+  assert.deepEqual(parsedLegacy.data, before);
+  assert.doesNotMatch(
+    formatEntryText(parsedLegacy.data.finalEntry.members),
+    /경험치|XP|%/i,
+  );
+
+  const currentMembers = roster(15).map(({ experience, ...current }) => ({
+    ...current,
+    manualRank: null,
+  }));
+  const currentSnapshot = snapshot(currentMembers);
+  currentSnapshot.members.forEach((entry) => {
+    delete entry.experience;
+    entry.manualRank = null;
+  });
+  assert.ok(currentSnapshot.members.every((entry) => entry.rank === null));
+  const currentData = { members: currentMembers, finalEntry: currentSnapshot };
+  const parsedCurrent = parseBackup(JSON.stringify(envelope(currentData)));
+  assert.deepEqual(parsedCurrent.data, currentData);
+  const lines = formatEntryText(parsedCurrent.data.finalEntry.members).split(
+    "\n",
+  );
+  assert.equal(lines.length, 16);
+  assert.doesNotMatch(lines.join("\n"), /경험치|XP|%/i);
 });
 
 test("historic final snapshots remain valid after deletion and draft changes without normalization", async (t) => {
@@ -440,6 +579,12 @@ test("malformed entry imports never replace existing usable native data", async 
     },
     (data) => {
       data.finalEntry.members[0].rank = 1.5;
+    },
+    (data) => {
+      data.finalEntry.members[0].manualRank = "1";
+    },
+    (data) => {
+      data.finalEntry.members[0].manualRank = 5001;
     },
     (data) => {
       data.finalEntry.settings.absentIds = [data.finalEntry.members[0].id];

@@ -1,6 +1,7 @@
 "use strict";
 
 const { validateDocument } = require("./document.cjs");
+const { hydrateManualRanks } = require("./manual-ranking.cjs");
 
 const FORMAT = "lineage-clan-manager";
 const MAX_DATA_BYTES = 5 * 1024 * 1024;
@@ -99,10 +100,17 @@ function convertBackup(source, { normalizeFairyClass = true } = {}) {
   // an earlier legacyImport archive in another copy on repeated conversion.
   try {
     validateDocument(original.data);
+    const report = emptyReport("native", original.data.members.length);
+    if (original.data.legacyImport?.sourceBackup) {
+      const hydrated = hydrateManualRanks(original.data);
+      original.data = hydrated.data;
+      if (hydrated.restoredCount > 0)
+        report.manualRanks = hydrated.restoredCount;
+    }
     checkSize(original);
     return {
       backup: original,
-      report: emptyReport("native", original.data.members.length),
+      report,
     };
   } catch (error) {
     const legacy =
@@ -137,8 +145,12 @@ function convertBackup(source, { normalizeFairyClass = true } = {}) {
       note.push("클래스 표기 변경: 요정-똥 → 요정-똥물");
     }
     if (member.rank != null) {
-      if (!Number.isSafeInteger(member.rank) || member.rank < 0)
-        reject("원본 순위는 0 이상의 정수여야 합니다.");
+      if (
+        !Number.isInteger(member.rank) ||
+        member.rank < 0 ||
+        member.rank > 5000
+      )
+        reject("원본 순위는 0~5,000 사이의 정수여야 합니다.");
       note.push(`원본 순위: ${member.rank} (혈맹 직위 아님)`);
     }
     if (member.active != null) {
@@ -161,6 +173,7 @@ function convertBackup(source, { normalizeFairyClass = true } = {}) {
       class: renameClass ? "요정-똥물" : member.job,
       level: missingLevel ? 1 : member.level,
       experience: missingExperience ? 0 : member.experience,
+      manualRank: member.rank == null || member.rank === 0 ? null : member.rank,
       role: "미기록",
       note: note.join("\n"),
     };

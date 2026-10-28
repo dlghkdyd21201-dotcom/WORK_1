@@ -624,10 +624,7 @@ tbody tr:hover {
   line-height: 1.2;
 }
 .level-cell {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 7px 14px;
-  min-width: 130px;
+  white-space: nowrap;
 }
 .level-cell strong {
   font-size: 13px;
@@ -638,25 +635,10 @@ tbody tr:hover {
   font-size: 9px;
   color: #8b7a5d;
 }
-.level-cell > span {
-  font-size: 10px;
-  color: #747887;
-  align-self: center;
-  text-align: right;
+.manual-rank {
+  font-size: 11px;
+  color: #b9a77f;
   font-variant-numeric: tabular-nums;
-}
-.mini-progress {
-  height: 3px;
-  background: #31313a;
-  grid-column: span 2;
-  border-radius: 3px;
-  overflow: hidden;
-}
-.mini-progress i {
-  display: block;
-  height: 100%;
-  background: #a48c5b;
-  border-radius: 3px;
 }
 .role-label {
   font-size: 11px;
@@ -914,10 +896,13 @@ tbody tr:hover {
 .rank-number {
   display: inline-grid;
   place-items: center;
-  width: 26px;
+  min-width: 26px;
   height: 26px;
+  padding: 0 4px;
   color: #828694;
   font-size: 12px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .rank-number.top-1 {
   border: 1px solid #6b5532;
@@ -955,11 +940,6 @@ tbody tr:hover {
   font-size: 12px;
   font-weight: 600;
   color: #c2ac7c;
-}
-.experience-text {
-  font-size: 11px;
-  color: #8f94a4;
-  font-variant-numeric: tabular-nums;
 }
 .ranking-table th,
 .ranking-table td {

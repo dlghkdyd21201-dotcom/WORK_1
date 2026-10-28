@@ -15,6 +15,7 @@ function member(index, overrides = {}) {
     name: `캐릭터 ${index}`,
     class: "기사",
     level: 120 - index,
+    manualRank: index + 1,
     experience: 50,
     ...overrides,
   };

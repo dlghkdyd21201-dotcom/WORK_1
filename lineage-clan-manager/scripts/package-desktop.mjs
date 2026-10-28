@@ -78,6 +78,7 @@ async function assertAppArchive(filename) {
     "lib/store.cjs",
     "lib/document.cjs",
     "lib/entry.cjs",
+    "lib/manual-ranking.cjs",
     "lib/clipboard.cjs",
   ]) {
     if (!entries.includes(required))
@@ -232,8 +233,12 @@ async function main() {
         "",
         "던전 전투 메뉴에서는 등록된 혈맹원으로 15인 엔트리를 편성합니다.",
         "랭킹 상위 15명 또는 저장한 클래스별 인원으로 선발할 수 있습니다.",
+        "수기 순위는 1~5000 사이의 정수이며 숫자가 작을수록 높은 순위입니다.",
+        "동순위는 캐릭터명 순서, 미입력자는 순위 입력자 뒤에 배치합니다.",
+        "미입력자끼리는 레벨이 높은 순서, 같은 레벨이면 캐릭터명 순서입니다.",
         "불참자는 제외되며, 인원이 부족하면 엔트리를 확정할 수 없습니다.",
-        "최종 엔트리를 확정·저장한 뒤 복사하여 전달하세요.",
+        "최종 엔트리를 확정·저장한 뒤 캐릭터명·클래스·레벨 명단을 복사하세요.",
+        "이전 버전에서 확정한 엔트리는 새 순위 기준으로 다시 확정해야 합니다.",
         "",
         "자료는 사용자 PC의 앱 데이터 폴더에 저장됩니다.",
         "%APPDATA%\\LineageClanManager\\clan-data.json",

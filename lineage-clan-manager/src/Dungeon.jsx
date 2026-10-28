@@ -104,13 +104,13 @@ function memberSnapshot(member) {
     name: member.name,
     class: member.class,
     level: member.level,
-    experience: member.experience,
-    rank: member.rank,
+    manualRank: member.manualRank ?? null,
+    rank: member.rank ?? null,
   };
 }
 
-function formatPercent(value) {
-  return Number(value).toLocaleString("ko-KR", { maximumFractionDigits: 3 });
+function rankLabel(member) {
+  return member.manualRank == null ? "미입력" : `${member.manualRank}위`;
 }
 
 export default function Dungeon({
@@ -195,11 +195,18 @@ export default function Dungeon({
     }
   }, [members, settings.mode, quotasValid, selectionSettings]);
   const selected = selection.members || [];
+  const unrankedCount = selected.filter(
+    (member) => member.manualRank == null,
+  ).length;
   const selectedIds = new Set(selected.map((member) => member.id));
   const complete = !selection.error && selected.length === ENTRY_SIZE;
   const confirmed = Boolean(
     data.finalEntry &&
     complete &&
+    data.finalEntry.members.every(
+      (member) =>
+        Object.hasOwn(member, "manualRank") && Object.hasOwn(member, "rank"),
+    ) &&
     settingsKey(data.finalEntry.settings) === settingsKey(selectionSettings) &&
     JSON.stringify(data.finalEntry.members.map(memberSnapshot)) ===
       JSON.stringify(selected.map(memberSnapshot)),
@@ -382,7 +389,7 @@ export default function Dungeon({
           <p className="entry-eyebrow">DUNGEON ENTRY</p>
           <h1>던전 전투</h1>
           <p className="entry-subtitle">
-            15인 엔트리 편성 · 불참자를 제외하고 레벨과 경험치 순으로
+            15인 엔트리 편성 · 불참자를 제외하고 입력한 수기 순위에 따라
             선발합니다.
           </p>
         </div>
@@ -516,8 +523,9 @@ export default function Dungeon({
               <div className="entry-rule-note">
                 <EntryIcon name="check" size={16} />
                 <p>
-                  레벨 → 경험치 순으로 상위 15명을 선발합니다. 동률은 캐릭터명
-                  순으로 정렬하며, 불참자는 제외합니다.
+                  입력한 수기 순위가 높은 혈맹원부터 15명을 선발합니다. 순위
+                  미입력자는 뒤에 배치하고, 동순위는 캐릭터명 순으로 정렬하며
+                  불참자는 제외합니다.
                 </p>
               </div>
             ) : (
@@ -677,8 +685,8 @@ export default function Dungeon({
                   <div className="entry-member-identity">
                     <strong>{member.name}</strong>
                     <span>
-                      {member.class} · Lv. {member.level} ·{" "}
-                      {formatPercent(member.experience)}%
+                      {member.class} · Lv. {member.level} · 수기 순위{" "}
+                      {rankLabel(member)}
                     </span>
                   </div>
                   <span className="entry-member-state">
@@ -722,6 +730,12 @@ export default function Dungeon({
             </div>
             <span className="entry-step">03</span>
           </div>
+          {unrankedCount > 0 && (
+            <p className="entry-unranked-note" role="status">
+              선발 명단에 수기 순위 미입력자 {unrankedCount}명이 포함되어
+              있습니다. 순위 입력자 다음에 배치됩니다.
+            </p>
+          )}
           {(selection.error || !complete) && (
             <div className="entry-shortage" role="status">
               <strong>
@@ -749,7 +763,7 @@ export default function Dungeon({
                   <th scope="col">순번</th>
                   <th scope="col">캐릭터</th>
                   <th scope="col">클래스</th>
-                  <th scope="col">레벨 / 경험치</th>
+                  <th scope="col">레벨 / 수기 순위</th>
                 </tr>
               </thead>
               <tbody>
@@ -768,7 +782,7 @@ export default function Dungeon({
                     </td>
                     <td>
                       <b>Lv. {member.level}</b>
-                      <small>{formatPercent(member.experience)}%</small>
+                      <small>수기 순위 {rankLabel(member)}</small>
                     </td>
                   </tr>
                 ))}

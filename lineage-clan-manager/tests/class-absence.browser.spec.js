@@ -12,6 +12,7 @@ const members = [
   class: className,
   level: 150 - index,
   experience: index / 10,
+  manualRank: null,
   role: "혈맹원",
   note: "합성 브라우저 검증 자료",
   createdAt: timestamp,

@@ -1,3 +1,7 @@
+import manualRanking from "../lib/manual-ranking.cjs";
+
+export const hydrateManualRanks = manualRanking.hydrateManualRanks;
+
 export const CLASSES = [
   "군주",
   "기사",
@@ -68,18 +72,23 @@ export function validateMember(candidate, members = [], ignoreId = null) {
     throw new Error("같은 이름의 혈맹원이 이미 등록되어 있습니다.");
   }
   const level = candidate.level;
-  const experience = candidate.experience;
   if (!Number.isInteger(level) || level < 1 || level > 200)
     throw new Error("레벨은 1~200 사이의 정수로 입력해 주세요.");
-  if (!Number.isFinite(experience) || experience < 0 || experience > 100)
-    throw new Error("경험치는 0~100% 사이로 입력해 주세요.");
+  const manualRank = manualRanking.normalizeManualRank(candidate.manualRank);
+  const experience = candidate.experience;
+  if (
+    experience !== undefined &&
+    (!Number.isFinite(experience) || experience < 0 || experience > 100)
+  )
+    throw new Error("보관된 경험치 자료를 확인해 주세요.");
   const now = new Date().toISOString();
   return {
     id,
     name,
     class: text(candidate.class, "클래스", 40, true),
     level,
-    experience,
+    manualRank,
+    ...(experience !== undefined ? { experience } : {}),
     role: text(candidate.role || "일반", "혈맹 직위", 30, true),
     note: text(candidate.note || "", "메모", 2000),
     createdAt: candidate.createdAt || now,
@@ -88,24 +97,7 @@ export function validateMember(candidate, members = [], ignoreId = null) {
 }
 
 export function rankMembers(members) {
-  const sorted = [...members].sort(
-    (a, b) =>
-      b.level - a.level ||
-      b.experience - a.experience ||
-      a.name.localeCompare(b.name, "ko") ||
-      a.id.localeCompare(b.id),
-  );
-  let rank = 0;
-  return sorted.map((member, index) => {
-    const previous = sorted[index - 1];
-    if (
-      !previous ||
-      previous.level !== member.level ||
-      previous.experience !== member.experience
-    )
-      rank = index + 1;
-    return { ...member, rank };
-  });
+  return manualRanking.rankMembers(members);
 }
 
 export function validateBattle(candidate, members = []) {

@@ -3,13 +3,21 @@ import { readFile } from "node:fs/promises";
 
 const KEY = "lineage-clan-manager:data:v1";
 
-function member(id, name, level, experience = 0, className = "기사") {
+function member(
+  id,
+  name,
+  level,
+  experience = 0,
+  className = "기사",
+  manualRank = null,
+) {
   return {
     id,
     name,
     class: className,
     level,
     experience,
+    manualRank,
     role: "혈맹원",
     note: "",
     createdAt: "2026-10-28T00:00:00.000Z",
@@ -37,7 +45,7 @@ async function seed(page, members) {
   );
 }
 
-async function addMember(page, name, level, experience = 0) {
+async function addMember(page, name, level, manualRank = null) {
   await page
     .getByRole("button", { name: "혈맹원 등록", exact: true })
     .first()
@@ -45,7 +53,10 @@ async function addMember(page, name, level, experience = 0) {
   const editor = page.getByRole("dialog", { name: "혈맹원 등록", exact: true });
   await editor.getByPlaceholder("캐릭터명을 입력하세요").fill(name);
   await editor.getByLabel(/^레벨/).fill(String(level));
-  await editor.getByLabel(/^경험치/).fill(String(experience));
+  await expect(editor.getByLabel(/^경험치/)).toHaveCount(0);
+  if (manualRank !== null) {
+    await editor.getByLabel(/^수기 순위/).fill(String(manualRank));
+  }
   await editor
     .getByRole("button", { name: "혈맹원 등록", exact: true })
     .click();
@@ -96,7 +107,7 @@ test("member create, duplicate validation, edit, search and delete persist throu
   page,
 }) => {
   await page.goto("/");
-  await addMember(page, "성장검증기사", 78, 42.125);
+  await addMember(page, "성장검증기사", 78, 42);
   await expect(
     page.getByRole("button", { name: "성장검증기사 수정", exact: true }),
   ).toBeVisible();
@@ -122,12 +133,17 @@ test("member create, duplicate validation, edit, search and delete persist throu
     .click();
   const editor = page.getByRole("dialog", { name: "혈맹원 수정", exact: true });
   await editor.getByLabel(/^레벨/).fill("79");
-  await editor.getByLabel(/^경험치/).fill("1.5");
+  await editor.getByLabel(/^수기 순위/).fill("1");
   await editor.getByRole("button", { name: "수정 저장", exact: true }).click();
   await expect(editor).not.toBeVisible();
   await page.reload();
   const row = page.locator("tbody tr").filter({ hasText: "성장검증기사" });
   await expect(row).toContainText("79");
+  const savedMember = await page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)).data.members[0],
+    KEY,
+  );
+  expect(savedMember.manualRank).toBe(1);
   await page
     .getByRole("textbox", { name: "혈맹원 검색", exact: true })
     .fill("존재하지않는검증인물");
@@ -150,32 +166,31 @@ test("member create, duplicate validation, edit, search and delete persist throu
   ).toBeVisible();
 });
 
-test("ranking reflects level and experience ties and immediately updates after editing", async ({
+test("ranking displays entered ranks and immediately updates after editing", async ({
   page,
 }, testInfo) => {
   await seed(page, [
-    member("r1", "공동검증가", 90, 25),
-    member("r2", "공동검증나", 90, 25),
+    member("r1", "공동검증가", 90, 25, "기사", 5),
+    member("r2", "공동검증나", 90, 99, "기사", 5),
     member("r3", "추월검증", 89, 99),
   ]);
   await page.goto("/");
   await page.getByRole("button", { name: "레벨 랭킹", exact: true }).click();
   const rows = page.locator(".ranking-table tbody tr");
-  await expect(rows.locator(".rank-number")).toHaveText(["1", "1", "3"]);
+  await expect(rows.locator(".rank-number")).toHaveText(["5", "5", "미입력"]);
   await expect(rows.locator(".rank-name")).toHaveText([
     "공동검증가",
     "공동검증나",
     "추월검증",
   ]);
   await page
-    .getByRole("button", { name: "추월검증 정보 수정", exact: true })
+    .getByRole("button", { name: "추월검증 순위 및 정보 수정", exact: true })
     .click();
   const editor = page.getByRole("dialog", { name: "혈맹원 수정", exact: true });
-  await editor.getByLabel(/^레벨/).fill("90");
-  await editor.getByLabel(/^경험치/).fill("26");
+  await editor.getByLabel(/^수기 순위/).fill("1");
   await editor.getByRole("button", { name: "수정 저장", exact: true }).click();
   await expect(editor).not.toBeVisible();
-  await expect(rows.locator(".rank-number")).toHaveText(["1", "2", "2"]);
+  await expect(rows.locator(".rank-number")).toHaveText(["1", "5", "5"]);
   await expect(rows.first().locator(".rank-name")).toHaveText("추월검증");
   await page.reload();
   await page.getByRole("button", { name: "레벨 랭킹", exact: true }).click();
@@ -189,7 +204,7 @@ test("ranking reflects level and experience ties and immediately updates after e
 test("backup download and restore roundtrip browser data without retaining removed edits", async ({
   page,
 }, testInfo) => {
-  await seed(page, [member("b1", "백업검증요정", 81, 12, "요정")]);
+  await seed(page, [member("b1", "백업검증요정", 81, 12, "요정", 19)]);
   await page.goto("/");
   const downloaded = page.waitForEvent("download");
   await page.getByRole("button", { name: "자료 백업", exact: true }).click();
@@ -201,6 +216,7 @@ test("backup download and restore roundtrip browser data without retaining remov
   expect(snapshot.data.members.map((item) => item.name)).toEqual([
     "백업검증요정",
   ]);
+  expect(snapshot.data.members[0].manualRank).toBe(19);
   page.once("dialog", (dialog) => dialog.accept());
   await page
     .getByRole("button", { name: "백업검증요정 삭제", exact: true })
@@ -221,4 +237,9 @@ test("backup download and restore roundtrip browser data without retaining remov
   await expect(
     page.getByRole("button", { name: "백업검증요정 수정", exact: true }),
   ).toBeVisible();
+  const restored = await page.evaluate(
+    (key) => JSON.parse(localStorage.getItem(key)).data.members[0],
+    KEY,
+  );
+  expect(restored.manualRank).toBe(19);
 });

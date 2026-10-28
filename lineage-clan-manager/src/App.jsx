@@ -1,6 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { storage, isDesktop } from "./storage.js";
-import { CLASSES, rankMembers, validateMember } from "./domain.js";
+import {
+  CLASSES,
+  hydrateManualRanks,
+  rankMembers,
+  validateMember,
+} from "./domain.js";
 import Dungeon from "./Dungeon.jsx";
 import "./styles.css";
 
@@ -147,7 +152,7 @@ function MemberForm({ member, members, onClose, onSubmit, busy }) {
       name: "",
       class: "기사",
       level: 1,
-      experience: 0,
+      manualRank: null,
       role: "혈맹원",
       note: "",
     },
@@ -181,7 +186,10 @@ function MemberForm({ member, members, onClose, onSubmit, busy }) {
         ...form,
         id: member?.id || newId(),
         level: Number(form.level),
-        experience: Number(form.experience),
+        manualRank:
+          form.manualRank === "" || form.manualRank == null
+            ? null
+            : Number(form.manualRank),
         createdAt: member?.createdAt || now,
         updatedAt: now,
       };
@@ -226,7 +234,8 @@ function MemberForm({ member, members, onClose, onSubmit, busy }) {
         <form onSubmit={submit}>
           <div className="modal-form-body">
             <p className="form-intro">
-              캐릭터 정보를 등록하면 레벨 랭킹에 자동으로 반영됩니다.
+              레벨과 수기 순위를 기록하세요. 순위를 비워 두면 미입력으로
+              표시됩니다.
             </p>
             <label className="field">
               캐릭터명<span className="required">*</span>
@@ -291,17 +300,18 @@ function MemberForm({ member, members, onClose, onSubmit, busy }) {
                 <small>1~200 사이의 레벨</small>
               </label>
               <label className="field">
-                경험치 (%)
+                수기 순위
                 <input
                   type="number"
-                  min="0"
-                  max="100"
-                  step="0.001"
-                  required
-                  value={form.experience}
-                  onChange={(event) => change("experience", event.target.value)}
+                  name="manualRank"
+                  min="1"
+                  max="5000"
+                  step="1"
+                  placeholder="미입력"
+                  value={form.manualRank ?? ""}
+                  onChange={(event) => change("manualRank", event.target.value)}
                 />
-                <small>같은 레벨은 경험치 순으로 정렬</small>
+                <small>1~5,000위 · 비워 두면 미입력</small>
               </label>
             </div>
             <label className="field">
@@ -340,7 +350,7 @@ function MemberForm({ member, members, onClose, onSubmit, busy }) {
   );
 }
 
-function Members({ members, rankings, busy, onEdit, onAdd, onDelete }) {
+function Members({ members, busy, onEdit, onAdd, onDelete }) {
   const [query, setQuery] = useState("");
   const [classFilter, setClassFilter] = useState("");
   const filtered = members.filter(
@@ -354,7 +364,10 @@ function Members({ members, rankings, busy, onEdit, onAdd, onDelete }) {
     ? members.reduce((sum, member) => sum + Number(member.level || 0), 0) /
       members.length
     : 0;
-  const highest = rankings[0];
+  const highest = members.reduce(
+    (best, member) => (!best || member.level > best.level ? member : best),
+    null,
+  );
   return (
     <>
       <div className="page-heading">
@@ -462,7 +475,8 @@ function Members({ members, rankings, busy, onEdit, onAdd, onDelete }) {
                 <tr>
                   <th>캐릭터</th>
                   <th>클래스</th>
-                  <th>레벨 / 경험치</th>
+                  <th>레벨</th>
+                  <th>수기 순위</th>
                   <th>직책</th>
                   <th>메모</th>
                   <th className="align-right">관리</th>
@@ -492,15 +506,18 @@ function Members({ members, rankings, busy, onEdit, onAdd, onDelete }) {
                         <strong>
                           <span>Lv.</span> {member.level}
                         </strong>
-                        <span>{number(member.experience || 0, 3)}%</span>
-                        <div className="mini-progress">
-                          <i
-                            style={{
-                              width: `${Math.min(100, Math.max(0, member.experience || 0))}%`,
-                            }}
-                          />
-                        </div>
                       </div>
+                    </td>
+                    <td>
+                      <span
+                        className={
+                          member.manualRank == null ? "muted" : "manual-rank"
+                        }
+                      >
+                        {member.manualRank == null
+                          ? "미입력"
+                          : `${number(member.manualRank)}위`}
+                      </span>
                     </td>
                     <td>
                       <span
@@ -570,6 +587,17 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
   const filtered = rankings.filter(
     (member) => !classFilter || member.class === classFilter,
   );
+  const topRanked = filtered
+    .filter((member) => member.rank != null)
+    .slice(0, 3);
+  const topLevels = [...filtered]
+    .sort(
+      (a, b) =>
+        b.level - a.level ||
+        a.name.localeCompare(b.name, "ko") ||
+        a.id.localeCompare(b.id),
+    )
+    .slice(0, 5);
   const maxLevel = Math.max(1, ...filtered.map((member) => member.level));
   return (
     <>
@@ -578,7 +606,8 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
           <span className="eyebrow">LEVEL RANKING</span>
           <h1>레벨 랭킹</h1>
           <p>
-            혈맹의 성장을 한눈에. 레벨과 경험치를 기준으로 순위를 확인하세요.
+            직접 입력한 순위대로 정렬합니다. 순위가 없으면 미입력으로
+            표시됩니다.
           </p>
         </div>
         <div className="heading-note">
@@ -591,7 +620,7 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
           <EmptyState
             icon="ranking"
             title="첫 번째 순위의 주인공을 기다립니다"
-            description="혈맹원을 등록하면 레벨과 경험치에 따라 랭킹이 자동으로 만들어집니다."
+            description="혈맹원을 등록하고 수기 순위를 입력해 주세요. 레벨도 함께 확인할 수 있습니다."
           >
             <button className="button primary" onClick={onMembers}>
               <Icon name="members" size={17} />
@@ -601,29 +630,28 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
         </section>
       ) : (
         <>
-          <div className="podium-grid">
-            {rankings.slice(0, 3).map((member, index) => (
-              <article
-                key={member.id}
-                className={`podium-card podium-${index + 1}`}
-              >
-                <span className="podium-kicker">
-                  {index === 0 ? "TOP RANKER" : "CLAN RANKER"}
-                </span>
-                <span className="podium-rank">
-                  <Icon name="ranking" size={22} />
-                  {member.rank}
-                  <small>위</small>
-                </span>
-                <div className="podium-member">{member.name}</div>
-                <span className="class-badge">{member.class}</span>
-                <div className="podium-level">
-                  Lv. <strong>{member.level}</strong>
-                  <span>{number(member.experience || 0, 3)}%</span>
-                </div>
-              </article>
-            ))}
-          </div>
+          {topRanked.length > 0 && (
+            <div className="podium-grid">
+              {topRanked.map((member) => (
+                <article
+                  key={member.id}
+                  className={`podium-card ${member.rank <= 3 ? `podium-${member.rank}` : ""}`}
+                >
+                  <span className="podium-kicker">MANUAL RANK</span>
+                  <span className="podium-rank">
+                    <Icon name="ranking" size={22} />
+                    {member.rank}
+                    <small>위</small>
+                  </span>
+                  <div className="podium-member">{member.name}</div>
+                  <span className="class-badge">{member.class}</span>
+                  <div className="podium-level">
+                    Lv. <strong>{member.level}</strong>
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
           <div className="ranking-layout">
             <section className="panel ranking-list-panel">
               <div className="panel-heading">
@@ -650,10 +678,9 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                 <table className="ranking-table">
                   <thead>
                     <tr>
-                      <th>순위</th>
+                      <th>수기 순위</th>
                       <th>캐릭터</th>
                       <th>레벨</th>
-                      <th>경험치</th>
                       <th className="align-right">정보</th>
                     </tr>
                   </thead>
@@ -662,9 +689,9 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                       <tr key={member.id}>
                         <td>
                           <span
-                            className={`rank-number ${member.rank <= 3 ? `top-${member.rank}` : ""}`}
+                            className={`rank-number ${member.rank != null && member.rank <= 3 ? `top-${member.rank}` : ""}`}
                           >
-                            {member.rank}
+                            {member.rank ?? "미입력"}
                           </span>
                         </td>
                         <td>
@@ -674,16 +701,11 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                         <td>
                           <span className="level-chip">Lv. {member.level}</span>
                         </td>
-                        <td>
-                          <span className="experience-text">
-                            {number(member.experience || 0, 3)}%
-                          </span>
-                        </td>
                         <td className="align-right">
                           <button
                             className="icon-button"
-                            title="혈맹원 정보 수정"
-                            aria-label={`${member.name} 정보 수정`}
+                            title="수기 순위 및 혈맹원 정보 수정"
+                            aria-label={`${member.name} 순위 및 정보 수정`}
                             disabled={busy}
                             onClick={() => onEdit(member)}
                           >
@@ -696,7 +718,7 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                 </table>
               </div>
               <div className="panel-footer">
-                <span>레벨 → 경험치 순 · 동률은 공동 순위</span>
+                <span>수기 순위 오름차순 · 미입력은 마지막에 레벨순 표시</span>
               </div>
             </section>
             <aside className="panel growth-panel">
@@ -707,13 +729,10 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                 </div>
               </div>
               <div className="level-bars">
-                {filtered.slice(0, 5).map((member, index) => (
+                {topLevels.map((member) => (
                   <div className="level-bar-row" key={member.id}>
                     <div>
-                      <span>
-                        <small>{index + 1}</small>
-                        {member.name}
-                      </span>
+                      <span>{member.name}</span>
                       <strong>{member.level}</strong>
                     </div>
                     <div className="level-bar-track">
@@ -728,9 +747,9 @@ function Ranking({ rankings, members, onEdit, busy, onMembers }) {
                 <Icon name="shield" size={20} />
                 <strong>함께 성장하는 혈맹</strong>
                 <p>
-                  레벨이나 경험치를 수정하면
+                  정보 수정에서 수기 순위를 입력하면
                   <br />
-                  순위도 함께 갱신됩니다.
+                  입력한 순서로 정렬됩니다.
                 </p>
               </div>
             </aside>
@@ -758,10 +777,15 @@ export default function App() {
     setError("");
     try {
       const result = await storage.load();
-      result.data.members.forEach((member) => validateMember(member));
-      setData(result.data);
+      const hydrated = hydrateManualRanks(result.data);
+      hydrated.data.members.forEach((member) => validateMember(member));
+      setData(hydrated.data);
       setRevision(result.revision);
       setLoaded(true);
+      if (hydrated.restoredCount)
+        setNotice(
+          `보관된 원본의 수기 순위 ${hydrated.restoredCount}명을 불러왔습니다.`,
+        );
     } catch (issue) {
       setError(issue.message);
     }
@@ -810,11 +834,16 @@ export default function App() {
     try {
       const result = await storage.importBackup(revision);
       if (!result.cancelled) {
-        result.data.members.forEach((member) => validateMember(member));
-        setData(result.data);
+        const hydrated = hydrateManualRanks(result.data);
+        hydrated.data.members.forEach((member) => validateMember(member));
+        setData(hydrated.data);
         setRevision(result.revision);
         setLoaded(true);
-        setNotice("백업 자료를 불러왔습니다.");
+        setNotice(
+          hydrated.restoredCount
+            ? `백업 자료와 원본의 수기 순위 ${hydrated.restoredCount}명을 불러왔습니다.`
+            : "백업 자료를 불러왔습니다.",
+        );
       }
     } catch (issue) {
       setError(issue.message);
@@ -898,7 +927,7 @@ export default function App() {
             <i />
             {isDesktop ? "독립 실행 프로그램" : "브라우저 저장 모드"}
           </span>
-          <small>VERSION 1.2.0</small>
+          <small>VERSION 1.3.0</small>
         </div>
       </aside>
       <div className="main-area">
@@ -963,7 +992,6 @@ export default function App() {
           ) : menu === "members" ? (
             <Members
               members={data.members}
-              rankings={rankings}
               busy={disabled}
               onAdd={() => {
                 setEditing(null);
