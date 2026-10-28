@@ -347,6 +347,45 @@
   line-height: 1.7;
   margin: 0 23px 20px;
 }
+.entry-absence-input {
+  display: grid;
+  gap: 10px;
+  padding: 0 23px 20px;
+}
+.entry-absence-input > label {
+  font-size: 11px;
+  color: #c5cbd7;
+  font-weight: 550;
+}
+.entry-absence-input > p {
+  color: #828da0;
+  font-size: 10px;
+  line-height: 1.8;
+}
+.entry-absence-input textarea {
+  width: 100%;
+  min-height: 90px;
+  resize: vertical;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.8;
+  border: 1px solid #303747;
+  border-radius: 7px;
+  background: #131720;
+  color: #cbd0dc;
+  padding: 10px 12px;
+}
+.entry-absence-input textarea::placeholder {
+  color: #656e80;
+}
+.entry-absence-input textarea:focus-visible {
+  outline: 2px solid #b89951;
+  outline-offset: 2px;
+}
+.entry-absence-input > .entry-name-feedback {
+  color: #d2b784;
+  overflow-wrap: anywhere;
+}
 .entry-absence-tools {
   padding: 0 23px 15px;
   display: flex;
@@ -778,6 +817,9 @@
   }
   .entry-absence-tools {
     padding: 0 18px 12px;
+  }
+  .entry-absence-input {
+    padding: 0 18px 18px;
   }
   .entry-absence-summary {
     padding: 0 18px 10px;

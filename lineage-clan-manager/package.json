@@ -1,7 +1,7 @@
 {
   "name": "lineage-clan-manager",
   "productName": "Lineage Clan Manager",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "혈맹원·레벨 랭킹·던전 전투 전용 독립 프로그램",
   "private": true,
   "type": "module",

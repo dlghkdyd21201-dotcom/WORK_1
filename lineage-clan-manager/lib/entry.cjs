@@ -1,6 +1,14 @@
 "use strict";
 
 const ENTRY_SIZE = 15;
+const ENTRY_CLASSES = Object.freeze([
+  "군주",
+  "기사",
+  "요정",
+  "요정-똥물",
+  "다크엘프",
+  "마법사",
+]);
 
 function reject(message) {
   throw new Error(message);
@@ -61,6 +69,54 @@ function validateEntryMember(member) {
     member.experience > 100
   )
     reject("엔트리 경험치는 0~100% 사이의 숫자여야 합니다.");
+}
+
+function comparableName(name) {
+  return name.trim().normalize("NFC").toLocaleLowerCase("ko");
+}
+
+function resolveAbsentNames(members, input) {
+  if (typeof input !== "string")
+    reject("불참자 이름은 쉼표나 줄바꿈으로 구분한 문자열이어야 합니다.");
+  if (input.length > 10000)
+    reject("불참자 이름 입력은 10,000자 이하여야 합니다.");
+  if (!Array.isArray(members) || members.length > 5000)
+    reject("불참자 확인용 혈맹원 목록을 확인해 주세요.");
+
+  const names = input
+    .split(/[,;\r\n]/)
+    .map((name) => name.trim())
+    .filter(Boolean);
+  if (names.length > 5000)
+    reject("불참자 이름은 한 번에 5,000개까지 입력할 수 있습니다.");
+
+  const membersByName = new Map();
+  for (const member of members) {
+    record(member, "불참자 확인용 혈맹원");
+    text(member.name, "불참자 확인용 캐릭터 이름", 40);
+    membersByName.set(comparableName(member.name), member);
+  }
+
+  const matchedMembers = [];
+  const unmatchedNames = [];
+  const duplicateNames = [];
+  const seenNames = new Set();
+  const duplicateKeys = new Set();
+  for (const name of names) {
+    const key = comparableName(name);
+    if (seenNames.has(key)) {
+      if (!duplicateKeys.has(key)) {
+        duplicateNames.push(name);
+        duplicateKeys.add(key);
+      }
+      continue;
+    }
+    seenNames.add(key);
+    const member = membersByName.get(key);
+    if (member) matchedMembers.push(member);
+    else unmatchedNames.push(name);
+  }
+  return { matchedMembers, unmatchedNames, duplicateNames };
 }
 
 function rankedMembers(members) {
@@ -152,6 +208,8 @@ function formatEntryText(members) {
 
 module.exports = {
   ENTRY_SIZE,
+  ENTRY_CLASSES,
+  resolveAbsentNames,
   selectEntry,
   formatEntryText,
   validateEntrySettings,

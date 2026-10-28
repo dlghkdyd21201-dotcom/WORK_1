@@ -1,23 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { storage, isDesktop } from "./storage.js";
-import { rankMembers, validateMember } from "./domain.js";
+import { CLASSES, rankMembers, validateMember } from "./domain.js";
 import Dungeon from "./Dungeon.jsx";
 import "./styles.css";
 
-const CLASSES = [
-  "군주",
-  "기사",
-  "요정",
-  "마법사",
-  "다크엘프",
-  "용기사",
-  "환술사",
-  "전사",
-  "검사",
-  "창기사",
-  "성기사",
-  "기타",
-];
 const MENU_ITEMS = [
   { id: "members", name: "혈맹원", caption: "MEMBERS", icon: "members" },
   {
@@ -912,7 +898,7 @@ export default function App() {
             <i />
             {isDesktop ? "독립 실행 프로그램" : "브라우저 저장 모드"}
           </span>
-          <small>VERSION 1.1.0</small>
+          <small>VERSION 1.2.0</small>
         </div>
       </aside>
       <div className="main-area">

@@ -1,16 +1,30 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { CLASSES, rankMembers } from "./domain.js";
+import { rankMembers } from "./domain.js";
 import entryLogic from "../lib/entry.cjs";
 import { copyEntryText } from "./clipboard.js";
 import "./Dungeon.css";
 
 const ENTRY_SIZE = 15;
+const ENTRY_CLASSES = entryLogic.ENTRY_CLASSES;
 
 function initialSettings(value) {
   return {
     mode: value?.mode === "class" ? "class" : "ranking",
     classQuotas: { ...(value?.classQuotas || {}) },
     absentIds: [...(value?.absentIds || [])],
+  };
+}
+
+function visibleSettings(value) {
+  const settings = initialSettings(value);
+  return {
+    ...settings,
+    classQuotas: Object.fromEntries(
+      ENTRY_CLASSES.map((className) => [
+        className,
+        settings.classQuotas[className] ?? 0,
+      ]),
+    ),
   };
 }
 
@@ -106,9 +120,11 @@ export default function Dungeon({
   disabled = false,
 }) {
   const [settings, setSettings] = useState(() =>
-    initialSettings(data.entrySettings),
+    visibleSettings(data.entrySettings),
   );
   const [query, setQuery] = useState("");
+  const [absentNames, setAbsentNames] = useState("");
+  const [absenceFeedback, setAbsenceFeedback] = useState("");
   const [saving, setSaving] = useState(false);
   const [copying, setCopying] = useState(false);
   const [message, setMessage] = useState("");
@@ -129,7 +145,7 @@ export default function Dungeon({
       pendingPersisted.current = null;
       return;
     }
-    setSettings(next);
+    setSettings(visibleSettings(next));
     setMessage("");
     setError("");
   }, [data.entrySettings]);
@@ -141,16 +157,6 @@ export default function Dungeon({
   );
   const selectedAbsentees = ranked.filter((member) => absentSet.has(member.id));
   const available = ranked.filter((member) => !absentSet.has(member.id));
-  const classes = useMemo(
-    () => [
-      ...new Set([
-        ...CLASSES,
-        ...members.map((member) => member.class),
-        ...Object.keys(settings.classQuotas),
-      ]),
-    ],
-    [members, settings.classQuotas],
-  );
   const quotaTotal = Object.values(settings.classQuotas).reduce(
     (sum, count) => sum + Number(count || 0),
     0,
@@ -159,10 +165,26 @@ export default function Dungeon({
     (count) => Number.isInteger(count) && count >= 0 && count <= ENTRY_SIZE,
   );
   const quotasValid = quotaInputsValid && quotaTotal === ENTRY_SIZE;
-  const settingsDirty = settingsKey(settings) !== settingsKey(persisted);
+  const settingsDirty =
+    settingsKey(settings) !== settingsKey(visibleSettings(persisted));
+  const selectionSettings = useMemo(
+    () =>
+      settings.mode === "ranking" && !quotasValid
+        ? { ...settings, classQuotas: {} }
+        : settings,
+    [settings, quotasValid],
+  );
   const selection = useMemo(() => {
     try {
-      return { ...entryLogic.selectEntry(members, settings), error: "" };
+      if (settings.mode === "class" && !quotasValid) {
+        throw new Error(
+          "여섯 클래스의 지정 인원을 다시 배분해 합계를 15명으로 맞춰 주세요.",
+        );
+      }
+      return {
+        ...entryLogic.selectEntry(members, selectionSettings),
+        error: "",
+      };
     } catch (issue) {
       return {
         members: [],
@@ -171,14 +193,14 @@ export default function Dungeon({
         error: issue.message,
       };
     }
-  }, [members, settings]);
+  }, [members, settings.mode, quotasValid, selectionSettings]);
   const selected = selection.members || [];
   const selectedIds = new Set(selected.map((member) => member.id));
   const complete = !selection.error && selected.length === ENTRY_SIZE;
   const confirmed = Boolean(
     data.finalEntry &&
     complete &&
-    settingsKey(data.finalEntry.settings) === settingsKey(settings) &&
+    settingsKey(data.finalEntry.settings) === settingsKey(selectionSettings) &&
     JSON.stringify(data.finalEntry.members.map(memberSnapshot)) ===
       JSON.stringify(selected.map(memberSnapshot)),
   );
@@ -222,19 +244,15 @@ export default function Dungeon({
   async function chooseMode(mode) {
     if (busy || mode === settings.mode) return;
     const next = { ...settings, mode };
-    if (mode === "ranking" && !quotasValid) {
-      const savedTotal = Object.values(persisted.classQuotas).reduce(
-        (sum, count) => sum + count,
-        0,
-      );
-      next.classQuotas =
-        savedTotal === ENTRY_SIZE ? { ...persisted.classQuotas } : {};
-    }
     setSettings(next);
     setError("");
     setMessage("");
     if (mode === "ranking" || quotasValid) {
-      if (await persist(next)) setMessage("선발 방식을 저장했습니다.");
+      const nextPersisted =
+        mode === "ranking" && !quotasValid
+          ? { ...persisted, mode, absentIds: next.absentIds }
+          : next;
+      if (await persist(nextPersisted)) setMessage("선발 방식을 저장했습니다.");
     }
   }
 
@@ -259,19 +277,66 @@ export default function Dungeon({
   }
 
   async function updateAbsences(ids) {
-    if (busy) return;
-    const next = { ...settings, absentIds: ids };
+    if (busy) return false;
+    const absentIds = [...new Set(ids)];
+    const next = { ...settings, absentIds };
     setSettings(next);
     const currentSettingsValid =
       quotasValid ||
       (settings.mode === "ranking" && quotaInputsValid && quotaTotal === 0);
-    const nextPersisted = currentSettingsValid
-      ? next
-      : { ...persisted, absentIds: ids };
-    if (await persist(nextPersisted))
+    const hasLegacyQuotas = Object.keys(persisted.classQuotas).some(
+      (className) => !ENTRY_CLASSES.includes(className),
+    );
+    const nextPersisted =
+      currentSettingsValid && !hasLegacyQuotas
+        ? next
+        : { ...persisted, absentIds };
+    if (await persist(nextPersisted)) {
       setMessage(
         "불참자를 저장했습니다. 체크한 혈맹원은 엔트리에서 제외됩니다.",
       );
+      return true;
+    }
+    return false;
+  }
+
+  async function addAbsentNames() {
+    if (busy || !absentNames.trim()) return;
+    setAbsenceFeedback("");
+    try {
+      const { matchedMembers, unmatchedNames, duplicateNames } =
+        entryLogic.resolveAbsentNames(members, absentNames);
+      const alreadyAbsent = matchedMembers.filter((member) =>
+        absentSet.has(member.id),
+      );
+      const feedback = [];
+      if (unmatchedNames.length)
+        feedback.push(`등록되지 않은 캐릭터명: ${unmatchedNames.join(", ")}`);
+      if (duplicateNames.length)
+        feedback.push(`중복 입력: ${duplicateNames.join(", ")}`);
+      if (alreadyAbsent.length)
+        feedback.push(
+          `이미 불참자로 지정됨: ${alreadyAbsent.map((member) => member.name).join(", ")}`,
+        );
+      if (!matchedMembers.length) {
+        setAbsenceFeedback(feedback.join(" · "));
+        return;
+      }
+      setAbsenceFeedback(feedback.join(" · "));
+      const saved = await updateAbsences([
+        ...settings.absentIds,
+        ...matchedMembers.map((member) => member.id),
+      ]);
+      if (saved) {
+        setAbsentNames(unmatchedNames.join("\n"));
+        const addedCount = matchedMembers.length - alreadyAbsent.length;
+        setAbsenceFeedback(
+          [`불참자 ${addedCount}명을 추가했습니다.`, ...feedback].join(" · "),
+        );
+      }
+    } catch (issue) {
+      setAbsenceFeedback(issue.message);
+    }
   }
 
   async function confirmEntry() {
@@ -279,13 +344,15 @@ export default function Dungeon({
     try {
       const finalEntry = {
         confirmedAt: new Date().toISOString(),
-        settings: initialSettings(settings),
+        settings: initialSettings(selectionSettings),
         members: selected.map(memberSnapshot),
       };
-      if (await persist(settings, finalEntry))
+      if (await persist(selectionSettings, finalEntry)) {
+        setSettings(selectionSettings);
         setMessage(
           "15인 엔트리를 확정하고 저장했습니다. 최종 엔트리를 복사해 전달하세요.",
         );
+      }
     } catch (issue) {
       setError(issue.message);
     }
@@ -462,7 +529,7 @@ export default function Dungeon({
                   </span>
                 </div>
                 <div className="entry-quota-grid">
-                  {classes.map((className) => {
+                  {ENTRY_CLASSES.map((className) => {
                     const count = settings.classQuotas[className] || 0;
                     const ready = available.filter(
                       (member) => member.class === className,
@@ -499,7 +566,7 @@ export default function Dungeon({
                   <p>
                     {quotasValid
                       ? "클래스별 지정 인원을 저장할 수 있습니다."
-                      : "지정 인원 합계를 정확히 15명으로 맞춰 주세요."}
+                      : "여섯 클래스의 지정 인원을 다시 배분해 합계를 정확히 15명으로 맞춰 주세요."}
                   </p>
                   <button
                     className="entry-secondary"
@@ -531,6 +598,39 @@ export default function Dungeon({
                 <p>체크한 혈맹원은 모든 선발 방식에서 제외됩니다.</p>
               </div>
               <span className="entry-step">02</span>
+            </div>
+            <div className="entry-absence-input">
+              <label htmlFor="entry-absent-names">불참자 아이디 입력</label>
+              <p id="entry-absent-names-help">
+                등록된 캐릭터명을 쉼표 또는 줄바꿈으로 구분해 입력하세요. 이름이
+                정확히 일치하는 혈맹원만 불참자로 추가합니다.
+              </p>
+              <textarea
+                id="entry-absent-names"
+                aria-describedby="entry-absent-names-help"
+                placeholder={"예: 아데나, 데포로쥬\n판도라"}
+                value={absentNames}
+                maxLength={10000}
+                disabled={busy}
+                onChange={(event) => {
+                  setAbsentNames(event.target.value);
+                  setAbsenceFeedback("");
+                }}
+              />
+              <button
+                className="entry-secondary"
+                type="button"
+                disabled={busy || !absentNames.trim()}
+                onClick={addAbsentNames}
+              >
+                <EntryIcon name="minus" size={15} />
+                불참자로 추가
+              </button>
+              {absenceFeedback && (
+                <p className="entry-name-feedback" role="status">
+                  {absenceFeedback}
+                </p>
+              )}
             </div>
             <div className="entry-absence-tools">
               <label className="entry-search">
