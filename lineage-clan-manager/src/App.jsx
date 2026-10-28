@@ -29,7 +29,7 @@ const MENU_ITEMS = [
   {
     id: "dungeon",
     name: "던전 전투",
-    caption: "DUNGEON RECORDS",
+    caption: "DUNGEON ENTRY",
     icon: "swords",
   },
 ];
@@ -912,7 +912,7 @@ export default function App() {
             <i />
             {isDesktop ? "독립 실행 프로그램" : "브라우저 저장 모드"}
           </span>
-          <small>VERSION 1.0.0</small>
+          <small>VERSION 1.1.0</small>
         </div>
       </aside>
       <div className="main-area">

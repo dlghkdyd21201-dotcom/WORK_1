@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld(
   Object.freeze({
     load: () => ipcRenderer.invoke("clan:load"),
     save: (data, revision) => ipcRenderer.invoke("clan:save", data, revision),
+    copyText: (value) => ipcRenderer.invoke("clan:copy-entry", value),
     exportBackup: () => ipcRenderer.invoke("clan:export-backup"),
     importBackup: (revision) =>
       ipcRenderer.invoke("clan:import-backup", revision),

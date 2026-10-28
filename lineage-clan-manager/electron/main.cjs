@@ -7,11 +7,13 @@ const {
   dialog,
   ipcMain,
   session,
+  clipboard,
 } = require("electron");
 const path = require("node:path");
 const { mkdirSync } = require("node:fs");
 const { fileURLToPath } = require("node:url");
 const { createStore, parseBackup, readLimited } = require("../lib/store.cjs");
+const { writeClipboardText } = require("../lib/clipboard.cjs");
 
 const TITLE = "혈맹 관리 도우미";
 let startupError;
@@ -69,6 +71,7 @@ function registerHandlers(devURL) {
   }
   handle("clan:load", () => store.load());
   handle("clan:save", (data, revision) => store.save(data, revision));
+  handle("clan:copy-entry", (value) => writeClipboardText(clipboard, value));
   handle("clan:export-backup", async () => {
     const selected = await dialog.showSaveDialog(mainWindow, {
       title: "혈맹 자료 백업 저장",

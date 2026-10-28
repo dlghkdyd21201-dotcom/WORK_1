@@ -77,6 +77,8 @@ async function assertAppArchive(filename) {
     "electron/preload.cjs",
     "lib/store.cjs",
     "lib/document.cjs",
+    "lib/entry.cjs",
+    "lib/clipboard.cjs",
   ]) {
     if (!entries.includes(required))
       throw new Error(`The packaged app is missing ${required}.`);
@@ -138,10 +140,14 @@ async function main() {
   );
   if (!/^\d+\.\d+\.\d+$/.test(electronManifest.version))
     throw new Error("A pinned stable Electron version is required.");
+  if (!/^\d+\.\d+\.\d+$/.test(manifest.version))
+    throw new Error("A stable application version is required.");
+  const versionRoot = path.join(releaseRoot, manifest.version);
   const zipName = `${appName}-${manifest.version}-windows-x64.zip`;
   const zipPath = path.join(releaseRoot, zipName);
   const checksumPath = `${zipPath}.sha256`;
   await mkdir(releaseRoot, { recursive: true });
+  await mkdir(versionRoot, { recursive: true });
   // Never append into an older release archive or overwrite a completed release.
   if (await stat(zipPath).catch(() => null))
     throw new Error(`Release already exists: ${zipPath}`);
@@ -195,7 +201,7 @@ async function main() {
         ProductName: "혈맹 관리 도우미",
         FileDescription: "혈맹원·레벨 랭킹·던전 전투",
       },
-      out: releaseRoot,
+      out: versionRoot,
       overwrite: false,
       asar: true,
       prune: false,
@@ -211,17 +217,28 @@ async function main() {
       path.join(root, "THIRD_PARTY_NOTICES.md"),
       path.join(folder, "THIRD_PARTY_NOTICES.md"),
     );
+    await cp(path.join(root, "README.md"), path.join(folder, "README.md"));
     await writeFile(
       path.join(folder, "사용방법.txt"),
       [
         "혈맹 관리 도우미 — Windows 64비트",
         "",
-        "1. ZIP 압축을 폴더 전체로 풀어 주세요.",
-        "2. LineageClanManager.exe를 실행하세요.",
-        "3. exe와 같은 폴더의 DLL 및 resources 폴더를 함께 보관하세요.",
+        "1. 실행 중인 이전 버전 프로그램을 완전히 종료하세요.",
+        "2. ZIP 압축을 폴더 전체로 풀어 주세요.",
+        "3. LineageClanManager.exe를 실행하고 왼쪽 아래 버전을 확인하세요.",
+        `   이 배포본의 버전은 ${manifest.version}입니다.`,
+        "4. exe와 같은 폴더의 DLL 및 resources 폴더를 함께 보관하세요.",
+        "이전 버전이 실행 중이면 새 EXE를 눌러도 이전 창이 표시될 수 있습니다.",
+        "",
+        "던전 전투 메뉴에서는 등록된 혈맹원으로 15인 엔트리를 편성합니다.",
+        "랭킹 상위 15명 또는 저장한 클래스별 인원으로 선발할 수 있습니다.",
+        "불참자는 제외되며, 인원이 부족하면 엔트리를 확정할 수 없습니다.",
+        "최종 엔트리를 확정·저장한 뒤 복사하여 전달하세요.",
         "",
         "자료는 사용자 PC의 앱 데이터 폴더에 저장됩니다.",
         "%APPDATA%\\LineageClanManager\\clan-data.json",
+        "이전 버전 사용자는 프로그램을 종료하고 새 버전을 별도 폴더에 풀어 실행하세요.",
+        "같은 Windows 계정의 혈맹원 자료를 이어서 사용하며 앱 데이터 폴더를 삭제하지 마세요.",
         "프로그램의 백업·복원 기능으로 자료를 별도 파일에 보관할 수 있습니다.",
         "이 배포본에는 기존 웹사이트의 사용자 자료나 로그인 정보가 포함되어 있지 않습니다.",
         "",

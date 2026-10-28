@@ -1,5 +1,11 @@
 "use strict";
 
+const {
+  ENTRY_SIZE,
+  validateEntrySettings,
+  validateEntryMember,
+} = require("./entry.cjs");
+
 function reject(message) {
   throw new Error(message);
 }
@@ -52,6 +58,48 @@ function participant(value) {
   identifier(value.id, "참여자 ID");
   text(value.name, "참여자 이름", 40, true);
   text(value.class, "참여자 클래스", 40, true);
+}
+
+function finalEntry(value) {
+  record(value, "확정 엔트리");
+  if (
+    typeof value.confirmedAt !== "string" ||
+    value.confirmedAt.length > 50 ||
+    !/^\d{4}-\d{2}-\d{2}T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(
+      value.confirmedAt,
+    ) ||
+    !Number.isFinite(Date.parse(value.confirmedAt))
+  )
+    reject("엔트리 확정 시각은 유효한 ISO 형식이어야 합니다.");
+  const confirmedDate = value.confirmedAt.slice(0, 10);
+  if (
+    new Date(`${confirmedDate}T12:00:00Z`).toISOString().slice(0, 10) !==
+    confirmedDate
+  )
+    reject("엔트리 확정 날짜가 올바르지 않습니다.");
+  validateEntrySettings(value.settings);
+  if (!Array.isArray(value.members) || value.members.length !== ENTRY_SIZE)
+    reject("확정 엔트리는 정확히 15명이어야 합니다.");
+  const absentIds = new Set(value.settings.absentIds);
+  const ids = new Set();
+  const counts = new Map();
+  for (const member of value.members) {
+    validateEntryMember(member);
+    if (!Number.isInteger(member.rank) || member.rank < 1 || member.rank > 5000)
+      reject("확정 엔트리 순위는 1~5,000 사이의 정수여야 합니다.");
+    if (ids.has(member.id)) reject("확정 엔트리 혈맹원 ID가 중복되었습니다.");
+    if (absentIds.has(member.id))
+      reject("불참자는 확정 엔트리에 포함할 수 없습니다.");
+    ids.add(member.id);
+    counts.set(member.class, (counts.get(member.class) || 0) + 1);
+  }
+  if (value.settings.mode === "class") {
+    for (const [className, count] of counts) {
+      if (value.settings.classQuotas[className] !== count)
+        reject("확정 엔트리와 클래스별 정원이 일치하지 않습니다.");
+    }
+  }
+  // Snapshots are independent of the current roster and current draft settings.
 }
 
 function validateDocument(data) {
@@ -141,6 +189,9 @@ function validateDocument(data) {
       timestampFields(battle);
     }
   }
+  if (Object.hasOwn(data, "entrySettings"))
+    validateEntrySettings(data.entrySettings);
+  if (Object.hasOwn(data, "finalEntry")) finalEntry(data.finalEntry);
   return data;
 }
 
