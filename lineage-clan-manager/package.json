@@ -1,0 +1,31 @@
+{
+  "name": "lineage-clan-manager",
+  "productName": "Lineage Clan Manager",
+  "version": "1.0.0",
+  "description": "혈맹원·레벨 랭킹·던전 전투 전용 독립 프로그램",
+  "private": true,
+  "type": "module",
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "node --test --test-isolation=none tests/*.test.cjs",
+    "test:browser": "playwright test",
+    "desktop": "electron .",
+    "package:windows": "npm run build && node scripts/package-desktop.mjs win32 x64"
+  },
+  "engines": {
+    "node": ">=22.12"
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@electron/packager": "20.3.0",
+    "@playwright/test": "1.64.1",
+    "electron": "45.1.0",
+    "prettier": "3.9.10",
+    "vite": "8.3.5"
+  }
+}
